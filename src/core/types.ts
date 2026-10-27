@@ -51,7 +51,32 @@ export type Report = {
   /** Mismatches grouped by componentHint (or "Unknown" fallback) */
   groupedMismatches: Record<string, Mismatch[]>;
   summary: ReportSummary;
+  /** How the post-hydration snapshot was obtained and which subtree was diffed */
+  hydration: HydrationInfo;
   raw: { serverHtml: string; clientHtml: string };
+};
+
+export type HydrationInfo = {
+  /**
+   * "react-commit": snapshot taken synchronously at React's hydration commit (precise).
+   * "fallback": React never reported a hydration commit; snapshot taken after load + idle.
+   */
+  method: "react-commit" | "fallback";
+  reactVersion?: string;
+  reactBuild?: "production" | "development";
+  /** Hydration root(s) the diff was scoped to (CSS selectors), or ["html"] for the whole document */
+  roots: string[];
+  /** ms from navigation start to the first hydration commit */
+  hydratedAtMs?: number;
+};
+
+/** A hydrated React root and the DOM serialized at its hydration commit */
+export type HydratedRoot = {
+  selector: string;
+  /** Diff-path of the container, e.g. "html > body[0] > div[0]" */
+  path: string;
+  html: string;
+  at: number;
 };
 
 export type FetchServerResult = {
@@ -61,9 +86,13 @@ export type FetchServerResult = {
 };
 
 export type FetchClientResult = {
+  /** Snapshot of the whole document: at the first hydration commit, or settled (fallback) */
   html: string;
   finalUrl: string;
   reactErrors: ReactHydrationError[];
+  roots: HydratedRoot[];
+  reactVersion?: string;
+  reactBuild?: "production" | "development";
 };
 
 export type CompareOptions = {

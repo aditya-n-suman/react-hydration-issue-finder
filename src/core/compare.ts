@@ -4,7 +4,7 @@ import { fetchServer } from "./fetchServer.js";
 import { buildSelector } from "./selectorBuilder.js";
 import { extractComponentHint, SHIKSHA_COMPONENT_MAP } from "./componentHint.js";
 import { classifySeverity } from "./severity.js";
-import type { CompareOptions, Mismatch, Report, ReportSummary } from "./types.js";
+import type { CompareOptions, HydrationInfo, Mismatch, Report, ReportSummary } from "./types.js";
 
 function summarize(mismatches: Mismatch[], reactErrorCount: number): ReportSummary {
   let tagMismatches = 0;
@@ -75,11 +75,20 @@ export async function compare(url: string, options: CompareOptions = {}): Promis
       cookie: options.cookie,
       userAgent: options.userAgent,
       timeoutMs,
-      ignoreSelectors,
     }),
   ]);
 
-  const { mismatches, serverDoc } = domDiff(serverRes.html, clientRes.html);
+  const { mismatches, serverDoc } = domDiff(serverRes.html, clientRes.html, {
+    roots: clientRes.roots,
+    ignoreSelectors,
+  });
+  const hydration: HydrationInfo = {
+    method: clientRes.roots.length > 0 ? "react-commit" : "fallback",
+    reactVersion: clientRes.reactVersion,
+    reactBuild: clientRes.reactBuild,
+    roots: clientRes.roots.length > 0 ? clientRes.roots.map((r) => r.selector) : ["html"],
+    hydratedAtMs: clientRes.roots[0]?.at,
+  };
 
   // ── Enrichment pipeline ──
 
@@ -115,6 +124,7 @@ export async function compare(url: string, options: CompareOptions = {}): Promis
     mismatches,
     groupedMismatches,
     summary,
+    hydration,
     raw: {
       serverHtml: serverRes.html,
       clientHtml: clientRes.html,

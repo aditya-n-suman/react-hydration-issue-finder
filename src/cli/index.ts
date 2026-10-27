@@ -3,7 +3,7 @@ import { writeFileSync } from "node:fs";
 import { Command } from "commander";
 import kleur from "kleur";
 import { compare, reportHasIssues } from "../core/compare.js";
-import { renderHtmlReport } from "./htmlReport.js";
+import { describeHydration, renderHtmlReport } from "./htmlReport.js";
 import { startWebServer } from "../web/server.js";
 import type { Mismatch, Severity } from "../core/types.js";
 
@@ -109,6 +109,8 @@ program
         console.log(`  URL:           ${kleur.underline(report.url)}`);
         console.log(`  Server status: ${report.serverStatus}`);
         console.log(`  Fetched at:    ${report.fetchedAt}`);
+        const hyd = describeHydration(report.hydration);
+        console.log(`  Hydration:     ${report.hydration.method === "fallback" ? kleur.yellow(hyd) : hyd}`);
         console.log();
 
         // Summary badges

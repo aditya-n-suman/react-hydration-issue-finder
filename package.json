@@ -12,8 +12,9 @@
     "start:web": "node dist/web/server.js",
     "dev:web": "tsx src/web/server.ts",
     "dev:cli": "tsx src/cli/index.ts",
-    "test": "tsx --test test/**/*.test.ts",
-    "test:watch": "tsx --test --watch test/**/*.test.ts"
+    "test": "tsx --test test/*.test.ts",
+    "test:watch": "tsx --test --watch test/*.test.ts",
+    "test:e2e": "tsx --test test/e2e/*.e2e.ts"
   },
   "engines": {
     "node": ">=20"
@@ -36,6 +37,8 @@
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

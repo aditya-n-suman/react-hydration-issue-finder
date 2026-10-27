@@ -196,6 +196,7 @@ function renderSummary(report) {
       url: report.url,
       fetchedAt: report.fetchedAt,
       serverStatus: report.serverStatus,
+      hydration: report.hydration,
       summary: report.summary,
     },
     null,

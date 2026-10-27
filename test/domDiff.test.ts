@@ -32,6 +32,40 @@ describe("domDiff", () => {
     const client = `<!doctype html><html><body><ul><li>1</li><li>2</li><li>3</li></ul></body></html>`;
     const { mismatches } = domDiff(server, client);
     assert.equal(mismatches.some((m) => m.kind === "extraChild"), true);
+
+    const { mismatches: missing } = domDiff(client, server);
+    assert.deepEqual(missing.map((m) => m.kind), ["missingChild"]);
+  });
+
+  it("ignores whitespace-only text and comment separators between nodes", () => {
+    const server = `<!doctype html><html><head></head>\n  <body>\n<div id="root"><p>a<!-- -->b</p></div></body></html>`;
+    const client = `<!doctype html><html><head></head><body><div id="root"><p>ab</p></div></body></html>`;
+    assert.deepEqual(domDiff(server, client).mismatches, []);
+  });
+
+  it("an injected sibling does not cascade into mismatches for every following node", () => {
+    const server = `<!doctype html><html><body><main><h1>T</h1><p>1</p><p>2</p><p>3</p></main></body></html>`;
+    const client = `<!doctype html><html><body><main><div class="ad">x</div><h1>T</h1><p>1</p><p>2</p><p>3</p></main></body></html>`;
+    const { mismatches } = domDiff(server, client);
+    assert.deepEqual(mismatches.map((m) => m.kind), ["extraChild"]);
+  });
+
+  it("scopes the diff to the hydration root", () => {
+    const server = `<!doctype html><html><head><title>a</title></head><body><header>x</header><div id="root"><h1>Hi</h1></div></body></html>`;
+    const client = `<!doctype html><html><head><title>b</title><style>.x{}</style></head><body><div class="banner"></div><header>y</header><div id="root"><h1>Hello</h1></div></body></html>`;
+    const { mismatches } = domDiff(server, client, { roots: [{ selector: "#root", path: "html > body[0] > div[0]" }] });
+    assert.deepEqual(
+      mismatches.map((m) => [m.kind, m.path]),
+      [["text", "html > body[0] > div[0] > h1[0] > #text[0]"]]
+    );
+  });
+
+  it("ignoreSelectors drop matching subtrees on both sides", () => {
+    const server = `<!doctype html><html><body><div id="root"><aside class="widget"><b>s</b></aside><p>ok</p></div></body></html>`;
+    const client = `<!doctype html><html><body><div id="root"><p>ok</p><div data-ad="1">x</div></div></body></html>`;
+    assert.equal(domDiff(server, client).mismatches.length > 0, true);
+    const { mismatches } = domDiff(server, client, { ignoreSelectors: ["#root .widget", "[data-ad]"] });
+    assert.deepEqual(mismatches, []);
   });
 
   it("suppresses known client-only noise (head style/script injections and noscript)", () => {

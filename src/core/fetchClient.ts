@@ -1,7 +1,7 @@
 import { chromium, type Page } from "playwright";
 import { HYDRATION_SIGNAL_SOURCE } from "./hydrationSignal.js";
 import { captureReactHydrationErrors } from "./reactErrors.js";
-import type { FetchClientResult, ReactHydrationError } from "./types.js";
+import type { FetchClientResult, HydratedRoot } from "./types.js";
 
 const DEFAULT_UA =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -11,74 +11,52 @@ export type FetchClientOptions = {
   cookie?: string;
   userAgent?: string;
   timeoutMs?: number;
-  ignoreSelectors?: string[];
 };
 
-async function waitForHydrationSnapshot(page: Page, timeoutMs: number): Promise<void> {
-  const budget = Math.min(timeoutMs, 120_000);
+type HydrationCmpState = {
+  renderers: { version: string | null; bundleType: number }[];
+  roots: HydratedRoot[];
+  fallbackDone: boolean;
+};
+
+/**
+ * Wait until React reports a hydration commit (snapshot already captured in-page),
+ * or the non-React fallback fires. Then give late roots / recoverable-error logging
+ * a short window to land.
+ */
+async function waitForHydration(page: Page, timeoutMs: number): Promise<void> {
   await page
     .waitForFunction(
       () => {
-        const w = window as unknown as {
-          __hydrationCmpPromise?: Promise<unknown>;
-        };
-        return Boolean(w.__hydrationCmpPromise);
+        const s = (window as unknown as { __hydrationCmp?: HydrationCmpState }).__hydrationCmp;
+        return Boolean(s && (s.roots.length > 0 || s.fallbackDone));
       },
-      { timeout: 5000 }
+      undefined,
+      { timeout: timeoutMs, polling: 100 }
     )
     .catch(() => {});
-
-  await page
-    .waitForFunction(
-      () => {
-        const w = window as unknown as { __hydrationCmpDone?: unknown };
-        return Boolean(w.__hydrationCmpDone);
-      },
-      { timeout: budget }
-    )
-    .catch(async () => {
-      await page.waitForLoadState("networkidle", { timeout: Math.min(budget, 30_000) }).catch(() => {});
-    });
-
-  await page.evaluate(async () => {
-    const w = window as unknown as { __hydrationCmpPromise?: Promise<unknown> };
-    if (w.__hydrationCmpPromise) {
-      try {
-        await Promise.race([
-          w.__hydrationCmpPromise,
-          new Promise((r) => setTimeout(r, 3000)),
-        ]);
-      } catch {
-        /* ignore */
-      }
-    }
-    await new Promise<void>((r) => {
-      if (typeof requestIdleCallback === "function") {
-        requestIdleCallback(() => r(), { timeout: 2000 });
-      } else {
-        setTimeout(() => r(), 200);
-      }
-    });
-    await new Promise<void>((r) => {
-      requestAnimationFrame(() => requestAnimationFrame(() => r()));
-    });
-    await new Promise((r) => setTimeout(r, 400));
-  });
+  await page.waitForLoadState("load", { timeout: Math.min(timeoutMs, 30_000) }).catch(() => {});
+  // String form: tsx/esbuild wraps named inner functions in a `__name` helper that
+  // doesn't exist in the page.
+  await page.evaluate(`new Promise((r) => {
+    if (typeof requestIdleCallback === "function") requestIdleCallback(() => setTimeout(r, 1500), { timeout: 3000 });
+    else setTimeout(r, 1500);
+  })`);
 }
 
 /**
- * Load URL in Chromium, wait for hydration heuristics, return documentElement.outerHTML.
+ * Load URL in Chromium and return the DOM as it was at React's hydration commit
+ * (or after load + idle when no React hydration is observed).
  */
 export async function fetchClient(
   url: string,
   options: FetchClientOptions = {}
-): Promise<FetchClientResult & { reactErrors: ReactHydrationError[] }> {
+): Promise<FetchClientResult> {
   const {
     headers = {},
     cookie,
     userAgent = DEFAULT_UA,
     timeoutMs = 60_000,
-    ignoreSelectors = [],
   } = options;
 
   const { errors: reactErrors, attachToPage } = captureReactHydrationErrors();
@@ -104,23 +82,17 @@ export async function fetchClient(
       timeout: timeoutMs,
     });
 
-    await page.waitForLoadState("load", { timeout: timeoutMs }).catch(() => {});
-    await waitForHydrationSnapshot(page, timeoutMs);
+    await waitForHydration(page, timeoutMs);
 
-    if (ignoreSelectors.length > 0) {
-      await page.evaluate((selectors: string[]) => {
-        for (const sel of selectors) {
-          try {
-            document.querySelectorAll(sel).forEach((el: Element) => el.remove());
-          } catch {
-            /* invalid selector */
-          }
-        }
-      }, ignoreSelectors);
-    }
-
-    const html = await page.evaluate(() => document.documentElement?.outerHTML ?? "");
+    const state = await page.evaluate(
+      () => (window as unknown as { __hydrationCmp?: HydrationCmpState }).__hydrationCmp ?? null
+    );
+    const roots = state?.roots ?? [];
+    // Prefer the DOM as React left it at the hydration commit; otherwise the settled DOM.
+    const html =
+      roots[0]?.html || (await page.evaluate(() => document.documentElement?.outerHTML ?? ""));
     const finalUrl = page.url();
+    const renderer = state?.renderers[0];
 
     await context.close();
 
@@ -128,6 +100,9 @@ export async function fetchClient(
       html,
       finalUrl,
       reactErrors,
+      roots,
+      reactVersion: renderer?.version ?? undefined,
+      reactBuild: renderer ? (renderer.bundleType === 1 ? "development" : "production") : undefined,
     };
   } finally {
     await browser.close();

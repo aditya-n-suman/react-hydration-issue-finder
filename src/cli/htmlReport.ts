@@ -28,7 +28,7 @@ function mismatchDetail(m: Mismatch): string {
 }
 
 export function renderHtmlReport(report: Report): string {
-  const { summary, mismatches, reactErrors, raw, url, fetchedAt, serverStatus, groupedMismatches } = report;
+  const { summary, mismatches, reactErrors, raw, url, fetchedAt, serverStatus, groupedMismatches, hydration } = report;
   const reportJson = esc(JSON.stringify(report, null, 2));
 
   // Grouped mismatch sections
@@ -114,6 +114,7 @@ export function renderHtmlReport(report: Report): string {
     <div><strong>URL:</strong> ${esc(url)}</div>
     <div><strong>Fetched:</strong> ${esc(fetchedAt)}</div>
     <div><strong>Server status:</strong> ${serverStatus}</div>
+    <div><strong>Hydration:</strong> ${esc(describeHydration(hydration))}</div>
   </div>
 
   <div class="summary">
@@ -143,4 +144,11 @@ export function renderHtmlReport(report: Report): string {
   <pre style="max-height:40vh;overflow:auto;padding:1rem;border-radius:8px;border:1px solid #30363d;background:#010409;font-size:0.7rem">${reportJson}</pre>
 </body>
 </html>`;
+}
+
+export function describeHydration(h: Report["hydration"]): string {
+  if (h.method === "fallback") return "no React hydration commit observed; compared settled DOM (whole document)";
+  const react = h.reactVersion ? `React ${h.reactVersion} (${h.reactBuild ?? "unknown build"})` : "React";
+  const at = h.hydratedAtMs !== undefined ? ` at ${h.hydratedAtMs}ms` : "";
+  return `${react}, snapshot at hydration commit${at}, root ${h.roots.join(", ")}`;
 }
