@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>React hydration comparator</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="header">
+      <h1>React hydration comparator</h1>
+      <p class="sub">
+        Server HTML (no JS) vs initial hydrated DOM. Captures React #418/#423-style messages and structural diffs.
+      </p>
+    </header>
+
+    <form id="form" class="form">
+      <label>
+        Page URL
+        <input type="url" id="url" name="url" placeholder="https://example.com" required />
+      </label>
+      <label>
+        Timeout (ms)
+        <input type="number" id="timeout" name="timeout" value="60000" min="5000" step="1000" />
+      </label>
+      <label>
+        Ignore selectors (comma-separated)
+        <input
+          type="text"
+          id="ignore"
+          name="ignore"
+          placeholder=".intercom-lightweight-app, #chat-widget"
+        />
+      </label>
+      <button type="submit" id="submit">Compare</button>
+    </form>
+
+    <div id="status" class="status" hidden></div>
+    <div id="error" class="error" hidden></div>
+
+    <section id="results" class="results" hidden>
+      <div class="tabs">
+        <button type="button" class="tab active" data-tab="summary">Summary</button>
+        <button type="button" class="tab" data-tab="mismatches">Mismatches</button>
+        <button type="button" class="tab" data-tab="side">Side-by-side</button>
+        <button type="button" class="tab" data-tab="react">React errors</button>
+        <button type="button" class="tab" data-tab="raw">Raw HTML</button>
+      </div>
+
+      <div id="panel-summary" class="panel active">
+        <div id="summary-cards" class="cards"></div>
+        <pre id="summary-json" class="json"></pre>
+      </div>
+
+      <div id="panel-mismatches" class="panel">
+        <!-- Severity filter -->
+        <div class="severity-filter" id="severity-filter">
+          <label><input type="checkbox" value="critical" checked /> <span class="badge-critical">Critical</span></label>
+          <label><input type="checkbox" value="warning" checked /> <span class="badge-warning">Warning</span></label>
+          <label><input type="checkbox" value="info" checked /> <span class="badge-info">Info</span></label>
+          <label class="group-toggle"><input type="checkbox" id="group-toggle" /> Group by component</label>
+        </div>
+        <div id="mismatch-grouped" hidden></div>
+        <table class="table" id="mismatch-flat-table">
+          <thead>
+            <tr>
+              <th>Severity</th>
+              <th>Kind</th>
+              <th>Component</th>
+              <th>Path</th>
+              <th>Selector</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody id="mismatch-body"></tbody>
+        </table>
+      </div>
+
+      <div id="panel-side" class="panel">
+        <div class="diff-toolbar">
+          <div id="diff-stats" class="diff-stats"></div>
+          <div class="diff-view-toggle">
+            <button type="button" class="diff-view-btn active" data-view="unified">Unified</button>
+            <button type="button" class="diff-view-btn" data-view="split">Split</button>
+          </div>
+        </div>
+        <div class="diff-legend">
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--diff-removed-bg)"></span>Server only (−)</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--diff-added-bg)"></span>Client only (+)</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--diff-changed-bg)"></span>Changed (~)</span>
+        </div>
+
+        <!-- Unified diff view (git diff style) -->
+        <div id="diff-unified" class="diff-unified-wrap">
+          <pre id="unified-diff" class="html-pane unified-pane"></pre>
+        </div>
+
+        <!-- Split diff view (side-by-side) -->
+        <div id="diff-split" class="split" hidden>
+          <div class="pane">
+            <h3>Server HTML</h3>
+            <pre id="server-html" class="html-pane"></pre>
+          </div>
+          <div class="pane">
+            <h3>Client HTML</h3>
+            <pre id="client-html" class="html-pane"></pre>
+          </div>
+        </div>
+      </div>
+
+      <div id="panel-react" class="panel">
+        <ul id="react-list" class="react-list"></ul>
+      </div>
+
+      <div id="panel-raw" class="panel">
+        <div class="split">
+          <div class="pane">
+            <div class="pane-header">
+              <h3>Server HTML (Original)</h3>
+              <button type="button" class="copy-btn-large" id="copy-server">Copy Server HTML</button>
+            </div>
+            <pre id="raw-server" class="html-pane raw-pane"></pre>
+          </div>
+          <div class="pane">
+            <div class="pane-header">
+              <h3>Client HTML (Hydrated)</h3>
+              <button type="button" class="copy-btn-large" id="copy-client">Copy Client HTML</button>
+            </div>
+            <pre id="raw-client" class="html-pane raw-pane"></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <script src="app.js" type="module"></script>
+  </body>
+</html>
